@@ -1,7 +1,9 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Reflection;
+using CoreHtmlToImage.Options;
 
 namespace CoreHtmlToImage
 {
@@ -23,23 +25,21 @@ namespace CoreHtmlToImage
             {
                 toolFilepath = Path.Combine(directory, toolFilename + ".exe");
 
-                if (!File.Exists(toolFilepath))
-                {
-                    var assembly = typeof(HtmlConverter).GetTypeInfo().Assembly;
-                    var type = typeof(HtmlConverter);
-                    var ns = type.Namespace;
+                if (File.Exists(toolFilepath)) return;
+                var assembly = typeof(HtmlConverter).GetTypeInfo().Assembly;
+                var type = typeof(HtmlConverter);
+                var ns = type.Namespace;
 
-                    using (var resourceStream = assembly.GetManifestResourceStream($"{ns}.{toolFilename}.exe"))
-                    using (var fileStream = File.OpenWrite(toolFilepath))
-                    {
-                        resourceStream.CopyTo(fileStream);
-                    }
+                using (var resourceStream = assembly.GetManifestResourceStream($"{ns}.{toolFilename}.exe"))
+                using (var fileStream = File.OpenWrite(toolFilepath))
+                {
+                    resourceStream.CopyTo(fileStream);
                 }
             }
             else if (System.Runtime.InteropServices.RuntimeInformation.IsOSPlatform(System.Runtime.InteropServices.OSPlatform.Linux))
             {
                 //Check if wkhtmltoimage package is installed on this distro in using which command
-                Process process = Process.Start(new ProcessStartInfo()
+                var process = Process.Start(new ProcessStartInfo()
                 {
                     CreateNoWindow = true,
                     UseShellExecute = false,
@@ -50,7 +50,7 @@ namespace CoreHtmlToImage
                     Arguments = "which wkhtmltoimage"
 
                 });
-                string answer = process.StandardOutput.ReadToEnd();
+                var answer = process.StandardOutput.ReadToEnd();
                 process.WaitForExit();
 
                 if (!string.IsNullOrEmpty(answer) && answer.Contains("wkhtmltoimage"))
@@ -77,7 +77,7 @@ namespace CoreHtmlToImage
         /// <param name="format">Output image format</param>
         /// <param name="quality">Output image quality 1-100</param>
         /// <returns></returns>
-        public byte[] FromHtmlString(string html, int width = 1024, ImageFormat format = ImageFormat.Jpg, int quality = 100)
+        public static IEnumerable<byte> FromHtmlString(string html, int width = 1024, ImageFormat format = ImageFormat.Jpeg, int quality = 100)
         {
             var filename = Path.Combine(directory, $"{Guid.NewGuid()}.html");
             File.WriteAllText(filename, html);
@@ -94,23 +94,16 @@ namespace CoreHtmlToImage
         /// <param name="format">Output image format</param>
         /// <param name="quality">Output image quality 1-100</param>
         /// <returns></returns>
-        public byte[] FromUrl(string url, int width = 1024, ImageFormat format = ImageFormat.Jpg, int quality = 100)
+        public static byte[] FromUrl(string url, int width = 1024, ImageFormat format = ImageFormat.Jpeg, int quality = 100)
         {
             var imageFormat = format.ToString().ToLower();
             var filename = Path.Combine(directory, $"{Guid.NewGuid().ToString()}.{imageFormat}");
 
-            string args;
+            var args = IsLocalPath(url)
+                ? $"--quality {quality} --width {width} -f {imageFormat} \"{url}\" \"{filename}\""
+                : $"--quality {quality} --width {width} -f {imageFormat} {url} \"{filename}\"";
 
-            if (IsLocalPath(url))
-            {
-                args = $"--quality {quality} --width {width} -f {imageFormat} \"{url}\" \"{filename}\"";
-            }
-            else
-            {
-                args = $"--quality {quality} --width {width} -f {imageFormat} {url} \"{filename}\"";
-            }
-
-            Process process = Process.Start(new ProcessStartInfo(toolFilepath, args)
+            var process = Process.Start(new ProcessStartInfo(toolFilepath, args)
             {
                 WindowStyle = ProcessWindowStyle.Hidden,
                 CreateNoWindow = true,
@@ -122,27 +115,19 @@ namespace CoreHtmlToImage
             process.ErrorDataReceived += Process_ErrorDataReceived;
             process.WaitForExit();
 
-            if (File.Exists(filename))
-            {
-                var bytes = File.ReadAllBytes(filename);
-                File.Delete(filename);
-                return bytes;
-            }
+            if (!File.Exists(filename)) throw new Exception("Something went wrong. Please check input parameters");
+            var bytes = File.ReadAllBytes(filename);
+            File.Delete(filename);
+            return bytes;
 
-            throw new Exception("Something went wrong. Please check input parameters");
         }
 
         private static bool IsLocalPath(string path)
         {
-            if (path.StartsWith("http"))
-            {
-                return false;
-            }
-
-            return new Uri(path).IsFile;
+            return !path.StartsWith("http") && new Uri(path).IsFile;
         }
 
-        private void Process_ErrorDataReceived(object sender, DataReceivedEventArgs e)
+        private static void Process_ErrorDataReceived(object sender, DataReceivedEventArgs e)
         {
             throw new Exception(e.Data);
         }

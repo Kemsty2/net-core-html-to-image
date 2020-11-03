@@ -1,19 +1,22 @@
-﻿using System.IO;
+﻿using CoreHtmlToImage.Configurations;
+using System.IO;
 
 namespace CoreHtmlToImage.Console
 {
-    class Program
+    public class Program
     {
-        static void Main(string[] args)
+        public static void Main(string[] args)
         {
             // From HTML string
-            var converter = new HtmlConverter();
-            var html = "<div><strong>Hello</strong> World!</div>";
-            var htmlBytes = converter.FromHtmlString(html);
+            const string html = "<div><strong>Hello</strong> World!</div>";
+            var bytes = Core.HtmlConverter.ConvertHtmlToPdf(html, new PdfConfiguration
+            {
+                WkhtmlPath = "C:\\Program Files\\wkhtmltopdf\\bin"
+            });
 
             // From URL
-            var urlBytes = converter.FromUrl("http://google.com", 800, format: ImageFormat.Png, quality: 90);
-            File.WriteAllBytes("D:\\image.png", urlBytes);
+            //var urlBytes = HtmlConverter.FromUrl("http://google.com", 800, format: ImageFormat.Png, quality: 90);
+            File.WriteAllBytes("C:\\Users\\WDTN4590\\Pictures\\test.pdf", bytes);
         }
     }
 }
